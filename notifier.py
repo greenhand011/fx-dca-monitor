@@ -13,11 +13,26 @@ from typing import Dict, Optional
 import requests
 
 
+def format_data_source(source: str) -> str:
+    """将内部数据源标识转换为更易读的飞书展示文案。"""
+
+    source_mapping = {
+        "BOC": "✅ 正常（BOC）",
+        "API": "⚠️ 备用（API）",
+        "HISTORY": "⚠️ 历史（HISTORY）",
+        "FALLBACK": "🚨 估算（FALLBACK）",
+    }
+    return source_mapping.get(source, f"❓ 未知来源（{source}）")
+
+
 def build_feishu_card(report_data: Dict[str, str]) -> Dict[str, object]:
     """根据汇率与策略结果构造飞书 interactive 卡片。"""
 
+    source_text = format_data_source(report_data.get("data_source", "UNKNOWN"))
+
     summary_markdown = (
         f"**日期**：{report_data['date']}\n"
+        f"**数据来源**：{source_text}\n"
         f"**CNY→HKD**：`{report_data['cny_hkd']}`\n"
         f"**USD→HKD**：`{report_data['usd_hkd']}`\n"
         f"**综合成本**：`{report_data['cost']}`"

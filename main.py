@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 
 from calculator import calculate_cost, save_rate_record
-from data_fetcher import fetch_boc_cny_hkd, fetch_usd_hkd
+from data_fetcher import fetch_cny_hkd_with_fallback, fetch_usd_hkd_with_fallback
 from notifier import send_feishu_report
 from strategy import run_strategy_analysis
 from utils import setup_logger
@@ -30,11 +30,13 @@ def run() -> int:
     logger.info("fx-dca-monitor 开始执行。")
 
     try:
-        logger.info("步骤 1/6：开始抓取中国银行港币现汇卖出价。")
-        cny_hkd = fetch_boc_cny_hkd(logger=logger, attempts=3)
+        logger.info("步骤 1/6：开始获取 CNY/HKD 汇率（含容灾切换）。")
+        cny_hkd, cny_hkd_source = fetch_cny_hkd_with_fallback(logger=logger, attempts=3)
+        logger.info("CNY/HKD 最终采用来源：%s，值为 %.6f", cny_hkd_source, cny_hkd)
 
-        logger.info("步骤 2/6：开始抓取离岸 USD/HKD 汇率。")
-        usd_hkd = fetch_usd_hkd(logger=logger, attempts=3)
+        logger.info("步骤 2/6：开始获取离岸 USD/HKD 汇率（含容灾切换）。")
+        usd_hkd, usd_hkd_source = fetch_usd_hkd_with_fallback(logger=logger, attempts=3)
+        logger.info("USD/HKD 最终采用来源：%s，值为 %.6f", usd_hkd_source, usd_hkd)
 
         logger.info("步骤 3/6：开始计算综合成本。")
         cost = calculate_cost(cny_hkd, usd_hkd)
@@ -56,6 +58,7 @@ def run() -> int:
             "cny_hkd": f"{cny_hkd:.6f}",
             "usd_hkd": f"{usd_hkd:.6f}",
             "cost": f"{cost:.6f}",
+            "data_source": cny_hkd_source,
             "quantile_info": strategy_result["quantile_info"],
             "strategy_a_signal": strategy_result["strategy_a_signal"],
             "strategy_b_signal": strategy_result["strategy_b_signal"],
