@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import sys
 
-from calculator import calculate_cost, save_rate_record
+from calculator import HISTORY_FILE, calculate_cost, save_rate_record
 from data_fetcher import fetch_cny_hkd_with_fallback, fetch_usd_hkd_with_fallback
 from notifier import send_feishu_report
 from strategy import run_strategy_analysis
@@ -27,6 +27,8 @@ def run() -> int:
     """执行完整业务流程，并返回适合命令行退出的状态码。"""
 
     logger = setup_logger()
+    csv_path = HISTORY_FILE
+    print("当前使用CSV路径:", csv_path)
     logger.info("fx-dca-monitor 开始执行。")
 
     try:
@@ -46,11 +48,12 @@ def run() -> int:
             cny_hkd=cny_hkd,
             usd_hkd=usd_hkd,
             cost=cost,
+            csv_path=csv_path,
             logger=logger,
         )
 
         logger.info("步骤 5/6：开始运行策略分析。")
-        strategy_result = run_strategy_analysis(logger=logger)
+        strategy_result = run_strategy_analysis(csv_path=csv_path, logger=logger)
 
         logger.info("步骤 6/6：开始发送飞书消息。")
         report_data = {

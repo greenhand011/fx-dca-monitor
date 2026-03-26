@@ -40,7 +40,7 @@ def _load_or_init_history(csv_path: str) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame(columns=CSV_COLUMNS)
 
-    history_df = pd.read_csv(path)
+    history_df = pd.read_csv(path, encoding="utf-8-sig")
 
     # 若文件存在但列结构异常，则主动报错，避免静默写坏数据。
     missing_columns = [column for column in CSV_COLUMNS if column not in history_df.columns]
@@ -77,6 +77,12 @@ def save_rate_record(
         if logger:
             logger.info("历史文件不存在或为空，已创建首条记录。")
     else:
+        # 先统一清洗已有历史数据，确保更新当日记录时不会因为类型异常误伤整表。
+        history_df = history_df[CSV_COLUMNS].copy()
+        history_df["date"] = history_df["date"].astype(str).str.strip()
+        for column in ["cny_hkd", "usd_hkd", "cost"]:
+            history_df[column] = pd.to_numeric(history_df[column], errors="coerce")
+
         # 同一天重复运行时覆盖更新，避免同一日期出现多条记录。
         same_day_mask = history_df["date"].astype(str) == final_date
         if same_day_mask.any():
@@ -95,12 +101,17 @@ def save_rate_record(
             if logger:
                 logger.info("已追加 %s 的新汇率记录。", final_date)
 
-    # 统一按日期排序，保证策略模块读取时顺序稳定。
+    # 这里必须保留全部历史记录，只做“清洗 + 排序 + 去重”，绝不只保留最新一条。
     history_df["date"] = pd.to_datetime(history_df["date"], errors="coerce")
-    history_df = history_df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+    history_df = history_df.dropna(subset=["date"]).copy()
+    for column in ["cny_hkd", "usd_hkd", "cost"]:
+        history_df[column] = pd.to_numeric(history_df[column], errors="coerce")
+    history_df = history_df.dropna(subset=["cny_hkd", "usd_hkd", "cost"]).copy()
+    history_df = history_df.sort_values("date").drop_duplicates(subset=["date"], keep="last").reset_index(drop=True)
     history_df["date"] = history_df["date"].dt.strftime("%Y-%m-%d")
 
     history_df.to_csv(path, index=False, encoding="utf-8-sig")
+    print("写入后CSV总条数:", len(history_df))
 
     if logger:
         logger.info("历史数据已写入 CSV：%s", path.resolve())

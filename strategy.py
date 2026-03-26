@@ -26,7 +26,7 @@ def _load_history_for_strategy(csv_path: str) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(f"历史数据文件不存在：{path.resolve()}")
 
-    history_df = pd.read_csv(path)
+    history_df = pd.read_csv(path, encoding="utf-8-sig")
     if history_df.empty:
         raise ValueError("历史数据文件为空，暂时无法执行策略分析。")
 
@@ -35,11 +35,18 @@ def _load_history_for_strategy(csv_path: str) -> pd.DataFrame:
     if missing_columns:
         raise ValueError(f"历史数据缺少必要列：{missing_columns}")
 
-    history_df["date"] = pd.to_datetime(history_df["date"], errors="coerce")
+    # 先仅保留必要列，避免其他脏列干扰。
+    history_df = history_df[required_columns].copy()
+
+    # 日期解析必须宽松但可控：解析失败的行才会被丢弃，不能误伤全部历史数据。
+    history_df["date"] = pd.to_datetime(history_df["date"].astype(str).str.strip(), errors="coerce")
     for column in ["cny_hkd", "usd_hkd", "cost"]:
         history_df[column] = pd.to_numeric(history_df[column], errors="coerce")
 
-    history_df = history_df.dropna(subset=required_columns).sort_values("date").reset_index(drop=True)
+    # dropna 只清理真正缺失的脏数据，不应该清空正常历史样本。
+    history_df = history_df.dropna(subset=required_columns).copy()
+    history_df = history_df.sort_values("date").drop_duplicates(subset=["date"], keep="last").reset_index(drop=True)
+    print("策略读取数据条数:", len(history_df))
 
     if history_df.empty:
         raise ValueError("历史数据清洗后为空，无法执行策略分析。")
