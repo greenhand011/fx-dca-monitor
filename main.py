@@ -21,7 +21,8 @@ from data_fetcher import fetch_cny_hkd_with_fallback, fetch_usd_hkd_with_fallbac
 from notifier import send_feishu_report
 from strategy import run_strategy_analysis
 from utils import setup_logger
-
+import os
+print("CSV绝对路径:", os.path.abspath(csv_path))
 
 def run() -> int:
     """执行完整业务流程，并返回适合命令行退出的状态码。"""
