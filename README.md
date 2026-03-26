@@ -210,6 +210,55 @@ CSV 字段如下：
 date, cny_hkd, usd_hkd, cost
 ```
 
+## 历史数据初始化
+
+本项目支持使用真实历史汇率一次性初始化 `history_rates.csv`，从而让策略模块在第一次正式运行前就拥有足够样本，避免长期停留在冷启动状态。
+
+### 历史数据来源
+
+- `yfinance`：提供 `USDHKD=X` 的最近 90 天日线收盘价
+- `exchangerate.host`：提供 `HKD -> CNY` 的 timeseries 历史汇率
+
+为提高初始化成功率，脚本内部还带有公开历史镜像后备源。也就是说：
+
+- 会优先尝试你要求的主数据源
+- 若主数据源出现限流、超时、TLS 异常或接口策略变更
+- 脚本会自动切换到公开历史后备源，尽量保证 `history_rates.csv` 能成功生成
+
+### 转换逻辑
+
+初始化时不会直接查询 `CNY -> HKD` 历史值，而是通过下式转换：
+
+```text
+CNY→HKD = 1 / (HKD→CNY)
+```
+
+然后再结合 `USD→HKD` 计算综合成本：
+
+```text
+cost = cny_hkd * usd_hkd
+```
+
+### 数据对齐规则
+
+- 以 `USD/HKD` 的交易日为主时间轴
+- 如果 `HKD/CNY` API 某天缺数据，则对齐后使用前值填充
+- 最终覆盖写入 `history_rates.csv`
+
+### 使用方法
+
+```bash
+python init_history_real.py
+```
+
+执行成功后，`history_rates.csv` 将被真实历史数据覆盖。之后再运行：
+
+```bash
+python main.py
+```
+
+策略模块通常就可以直接进入真实分位判断，而不再只是冷启动提示。
+
 ## GitHub Actions 自动运行说明
 
 项目已内置 GitHub Actions 工作流，具备以下特性：

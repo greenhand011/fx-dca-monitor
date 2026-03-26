@@ -25,7 +25,7 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 
 from calculator import HISTORY_FILE
-from utils import execute_with_retry, get_random_user_agent, safe_float
+from utils import configure_yfinance_cache, execute_with_retry, get_random_user_agent, safe_float
 
 
 BOC_RATE_URL = "https://www.boc.cn/sourcedb/whpj/"
@@ -183,6 +183,60 @@ def get_last_valid_cny_hkd(
     return _get_last_valid_rate_from_history("cny_hkd", csv_path=csv_path, logger=logger)
 
 
+def fetch_historical_cny_hkd(
+    date: str,
+    csv_path: str = HISTORY_FILE,
+    logger: Optional[logging.Logger] = None,
+) -> Optional[float]:
+    """按日期读取历史 cny_hkd，供未来扩展使用。
+
+    当前实现为精确日期匹配：
+    1. 若历史文件不存在，则返回 None；
+    2. 若目标日期没有记录，则返回 None；
+    3. 若目标日期存在有效 cny_hkd，则返回浮点值。
+
+    参数 date 建议使用 YYYY-MM-DD 格式。
+    """
+
+    path = Path(csv_path)
+    if not path.exists():
+        if logger:
+            logger.warning("历史数据文件不存在，无法按日期读取 cny_hkd：%s", date)
+        return None
+
+    try:
+        history_df = pd.read_csv(path)
+        if history_df.empty or "date" not in history_df.columns or "cny_hkd" not in history_df.columns:
+            if logger:
+                logger.warning("历史数据结构不完整，无法按日期读取 cny_hkd：%s", date)
+            return None
+
+        history_df["date"] = history_df["date"].astype(str)
+        history_df["cny_hkd"] = pd.to_numeric(history_df["cny_hkd"], errors="coerce")
+        matched_df = history_df[history_df["date"] == str(date)].copy()
+
+        if matched_df.empty:
+            if logger:
+                logger.info("历史数据中未找到日期 %s 对应的 cny_hkd。", date)
+            return None
+
+        matched_value = matched_df["cny_hkd"].dropna()
+        matched_value = matched_value[matched_value > 0]
+        if matched_value.empty:
+            if logger:
+                logger.warning("日期 %s 存在记录，但 cny_hkd 无有效值。", date)
+            return None
+
+        result = round(float(matched_value.iloc[-1]), 6)
+        if logger:
+            logger.info("成功读取日期 %s 的历史 cny_hkd：%.6f", date, result)
+        return result
+    except Exception as exc:
+        if logger:
+            logger.warning("按日期读取历史 cny_hkd 失败（%s）：%s", date, exc)
+        return None
+
+
 def get_last_valid_usd_hkd(
     csv_path: str = HISTORY_FILE,
     logger: Optional[logging.Logger] = None,
@@ -234,6 +288,7 @@ def fetch_cny_hkd_with_fallback(
 def _download_usd_hkd_from_yfinance() -> float:
     """从 yfinance 下载 USD/HKD 最新收盘价或最近可用价格。"""
 
+    configure_yfinance_cache()
     ticker = yf.Ticker(USD_HKD_TICKER)
 
     # 选择最近 5 天是为了覆盖周末、节假日等无交易日场景，

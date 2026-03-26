@@ -13,6 +13,7 @@ import logging
 import random
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional, Sequence, Tuple, Type
 
 
@@ -110,6 +111,33 @@ def get_china_date_str() -> str:
     """获取北京时间日期字符串，格式为 YYYY-MM-DD。"""
 
     return get_china_now().strftime("%Y-%m-%d")
+
+
+def configure_yfinance_cache(logger: Optional[logging.Logger] = None) -> Path:
+    """将 yfinance 缓存目录固定到项目内可写位置。
+
+    某些运行环境下，yfinance 默认使用的系统缓存目录可能不可写，
+    会触发 sqlite 数据库无法打开的问题。这里统一把缓存目录放到：
+
+    项目根目录/.cache/yfinance
+
+    这样既兼容本地开发，也更适合 GitHub Actions 和受限沙箱环境。
+    """
+
+    cache_dir = Path(__file__).resolve().parent / ".cache" / "yfinance"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        import yfinance.cache as yf_cache
+
+        yf_cache.set_cache_location(str(cache_dir))
+        if logger:
+            logger.info("已配置 yfinance 缓存目录：%s", cache_dir)
+    except Exception as exc:
+        if logger:
+            logger.warning("配置 yfinance 缓存目录失败，将继续使用默认配置：%s", exc)
+
+    return cache_dir
 
 
 def execute_with_retry(
