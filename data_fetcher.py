@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """汇率数据抓取模块。
 
 本模块负责两类数据：
@@ -149,7 +150,7 @@ def _get_last_valid_rate_from_history(
         return None
 
     try:
-        history_df = pd.read_csv(path)
+        history_df = pd.read_csv(path, encoding="utf-8-sig")
         if history_df.empty or column_name not in history_df.columns:
             if logger:
                 logger.warning("历史数据为空或缺少 %s 列，无法读取历史兜底值。", column_name)
@@ -205,7 +206,7 @@ def fetch_historical_cny_hkd(
         return None
 
     try:
-        history_df = pd.read_csv(path)
+        history_df = pd.read_csv(path, encoding="utf-8-sig")
         if history_df.empty or "date" not in history_df.columns or "cny_hkd" not in history_df.columns:
             if logger:
                 logger.warning("历史数据结构不完整，无法按日期读取 cny_hkd：%s", date)

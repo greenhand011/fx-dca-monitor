@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """真实历史汇率初始化脚本。
 
 本脚本用于一次性初始化最近 90 天的真实历史数据，并覆盖生成 history_rates.csv。
@@ -21,6 +22,7 @@
 from __future__ import annotations
 
 import sys
+import os
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional
@@ -444,7 +446,9 @@ def write_history_csv(history_df: pd.DataFrame, csv_path: str = HISTORY_FILE, lo
     """覆盖写入 history_rates.csv。"""
 
     path = Path(csv_path)
-    history_df.to_csv(path, index=False, encoding="utf-8-sig")
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    history_df.to_csv(temp_path, index=False, encoding="utf-8-sig")
+    os.replace(temp_path, path)
 
     if logger:
         logger.info("已覆盖写入历史数据文件：%s", path.resolve())

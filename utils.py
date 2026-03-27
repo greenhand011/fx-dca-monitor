@@ -1,11 +1,5 @@
-"""通用工具模块。
-
-本文件集中放置项目中多个模块都会复用的基础能力，例如：
-1. 日志初始化，保证本地运行和 GitHub Actions 中都有清晰输出；
-2. 随机 User-Agent，降低网页抓取被简单拦截的概率；
-3. 通用重试执行器，统一处理网络抖动、临时失败等常见场景；
-4. 时间与数值转换工具，避免各模块重复实现。
-"""
+# -*- coding: utf-8 -*-
+"""通用工具模块。"""
 
 from __future__ import annotations
 
@@ -14,16 +8,11 @@ import random
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional, Sequence, Tuple, Type
+from typing import Any, Callable, Optional, Tuple, Type
 
 
-# 北京时间时区对象。由于 requirements 中未要求额外安装 pytz，
-# 这里直接使用固定 UTC+8 的方式即可满足项目需要。
 CHINA_TIMEZONE = timezone(timedelta(hours=8))
 
-
-# 常见浏览器 User-Agent 列表，用于请求中国银行网页时随机挑选。
-# 这样做并不能完全避免反爬限制，但能减少固定请求头带来的风险。
 USER_AGENTS = [
     (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -49,52 +38,40 @@ USER_AGENTS = [
 
 
 def setup_logger(name: str = "fx_dca_monitor") -> logging.Logger:
-    """创建并返回统一格式的日志对象。
-
-    为了避免重复添加 Handler，这里会先判断 logger 是否已经初始化。
-    """
+    """创建统一日志对象。"""
 
     logger = logging.getLogger(name)
-
     if logger.handlers:
         return logger
 
     logger.setLevel(logging.INFO)
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.INFO)
-    stream_handler.setFormatter(
+    handler = logging.StreamHandler()
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(
         logging.Formatter(
             fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     )
-
-    logger.addHandler(stream_handler)
+    logger.addHandler(handler)
     logger.propagate = False
     return logger
 
 
 def get_random_user_agent() -> str:
-    """随机返回一个浏览器 User-Agent。"""
+    """随机返回一个浏览器 UA。"""
 
     return random.choice(USER_AGENTS)
 
 
 def safe_float(value: Any) -> Optional[float]:
-    """将任意输入尽量安全地转换为浮点数。
-
-    常见网页数据里可能包含空格、逗号、中文空串等情况，
-    这里统一做一次预处理，失败则返回 None。
-    """
+    """安全转换成浮点数。"""
 
     if value is None:
         return None
-
     text = str(value).strip().replace(",", "")
     if not text:
         return None
-
     try:
         return float(text)
     except (TypeError, ValueError):
@@ -108,21 +85,13 @@ def get_china_now() -> datetime:
 
 
 def get_china_date_str() -> str:
-    """获取北京时间日期字符串，格式为 YYYY-MM-DD。"""
+    """获取北京时间日期字符串。"""
 
     return get_china_now().strftime("%Y-%m-%d")
 
 
 def configure_yfinance_cache(logger: Optional[logging.Logger] = None) -> Path:
-    """将 yfinance 缓存目录固定到项目内可写位置。
-
-    某些运行环境下，yfinance 默认使用的系统缓存目录可能不可写，
-    会触发 sqlite 数据库无法打开的问题。这里统一把缓存目录放到：
-
-    项目根目录/.cache/yfinance
-
-    这样既兼容本地开发，也更适合 GitHub Actions 和受限沙箱环境。
-    """
+    """把 yfinance 缓存目录固定到项目内，减少系统权限问题。"""
 
     cache_dir = Path(__file__).resolve().parent / ".cache" / "yfinance"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -135,7 +104,7 @@ def configure_yfinance_cache(logger: Optional[logging.Logger] = None) -> Path:
             logger.info("已配置 yfinance 缓存目录：%s", cache_dir)
     except Exception as exc:
         if logger:
-            logger.warning("配置 yfinance 缓存目录失败，将继续使用默认配置：%s", exc)
+            logger.warning("配置 yfinance 缓存目录失败：%s", exc)
 
     return cache_dir
 
@@ -151,28 +120,19 @@ def execute_with_retry(
     operation_name: str = "未命名操作",
     **kwargs: Any,
 ) -> Any:
-    """执行带重试的函数调用。
-
-    参数说明：
-    - attempts: 最大尝试次数，至少为 1；
-    - delay_seconds: 第一次失败后的等待秒数；
-    - backoff: 每次失败后等待时长的放大倍数；
-    - exceptions: 需要触发重试的异常类型；
-    - operation_name: 用于日志输出的操作名。
-    """
+    """执行带重试的函数。"""
 
     if attempts < 1:
         raise ValueError("attempts 必须大于等于 1")
 
-    current_delay = delay_seconds
     last_error: Optional[BaseException] = None
+    current_delay = delay_seconds
 
     for attempt in range(1, attempts + 1):
         try:
             return func(*args, **kwargs)
         except exceptions as exc:  # type: ignore[misc]
             last_error = exc
-
             if logger:
                 logger.warning(
                     "%s 第 %s/%s 次执行失败：%s",
@@ -181,18 +141,13 @@ def execute_with_retry(
                     attempts,
                     exc,
                 )
-
             if attempt < attempts:
                 if logger:
-                    logger.info(
-                        "%s 将在 %.1f 秒后重试。",
-                        operation_name,
-                        current_delay,
-                    )
+                    logger.info("%s 将在 %.1f 秒后重试。", operation_name, current_delay)
                 time.sleep(current_delay)
                 current_delay *= backoff
 
     if last_error is not None:
         raise last_error
-
     raise RuntimeError(f"{operation_name} 重试执行结束，但未返回结果。")
+
