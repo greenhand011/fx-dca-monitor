@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
-from utils import get_china_date_str
+from utils import get_china_date_str, safe_write_csv_atomic
 
 
 HISTORY_FILE = "history_rates.csv"
@@ -51,7 +50,6 @@ def save_rate_record(
 ) -> pd.DataFrame:
     """保存或更新历史记录，只更新当天，不覆盖全表。"""
 
-    path = Path(csv_path)
     final_date = record_date or get_china_date_str()
     history_df = _load_or_init_history(csv_path)
 
@@ -99,9 +97,7 @@ def save_rate_record(
     )
     history_df["date"] = history_df["date"].dt.strftime("%Y-%m-%d")
 
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-    history_df.to_csv(temp_path, index=False, encoding="utf-8-sig")
-    os.replace(temp_path, path)
+    path = safe_write_csv_atomic(history_df, csv_path=csv_path, logger=logger)
     print("写入后CSV总条数:", len(history_df))
 
     if logger:

@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import os
 import logging
 import random
+import stat
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -151,3 +154,73 @@ def execute_with_retry(
         raise last_error
     raise RuntimeError(f"{operation_name} 重试执行结束，但未返回结果。")
 
+
+def safe_write_csv_atomic(
+    dataframe: Any,
+    csv_path: str,
+    logger: Optional[logging.Logger] = None,
+    attempts: int = 5,
+    delay_seconds: float = 0.2,
+) -> Path:
+    """把 DataFrame 安全写入 CSV。
+
+    设计原则：
+    1. 先写入同目录临时文件，确保数据写完后再替换正式文件；
+    2. 临时文件句柄必须显式关闭；
+    3. 替换动作带重试，兼容 Windows 上常见的短暂文件锁；
+    4. 如果正式文件被标记为只读，则尝试先清掉只读属性再替换。
+    """
+
+    target_path = Path(csv_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fd, temp_name = tempfile.mkstemp(
+        dir=str(target_path.parent),
+        prefix=f"{target_path.stem}.",
+        suffix=".tmp",
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
+
+    try:
+        with temp_path.open("w", encoding="utf-8-sig", newline="") as handle:
+            dataframe.to_csv(handle, index=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+        last_error: Optional[BaseException] = None
+        for attempt in range(1, attempts + 1):
+            try:
+                os.replace(temp_path, target_path)
+                return target_path
+            except PermissionError as exc:
+                last_error = exc
+                if logger:
+                    logger.warning(
+                        "CSV 原子替换失败，第 %s/%s 次：%s",
+                        attempt,
+                        attempts,
+                        exc,
+                    )
+
+                if target_path.exists():
+                    try:
+                        os.chmod(target_path, stat.S_IWRITE)
+                    except Exception:
+                        pass
+
+                if attempt < attempts:
+                    time.sleep(delay_seconds * attempt)
+                else:
+                    raise
+
+        if last_error is not None:
+            raise last_error
+
+        return target_path
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
